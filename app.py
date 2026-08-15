@@ -15,7 +15,7 @@ if not api_key:
     st.stop()
 
 genai.configure(api_key=api_key)
-model = genai.GenerativeModel("gemini-2.0-flash")
+model = genai.GenerativeModel("gemini-1.5-flash")
 
 # --- PDF upload & text extraction (cached so re-runs don't re-parse) ---
 uploaded_file = st.sidebar.file_uploader("Upload a PDF", type=["pdf"])
