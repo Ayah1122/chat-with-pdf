@@ -2,9 +2,15 @@ import streamlit as st
 from pypdf import PdfReader
 from google import genai
 from google.genai import types
+import os
 
-st.set_page_config(page_title="Chat with PDF", page_icon="📄")
-st.title("📄 Chat with your PDF")
+# --- Configuration: change this to your document's name/topic ---
+DOCUMENT_TITLE = "الذكاء الاصطناعي"  # Shown in the page title/header
+KNOWLEDGE_BASE_FILE = "knowledge_base.pdf"  # Must sit next to app.py in the repo
+
+st.set_page_config(page_title=f"مساعد {DOCUMENT_TITLE}", page_icon="📚")
+st.title(f"📚 مساعد {DOCUMENT_TITLE}")
+st.caption("اسألني أي سؤال يتعلق بمحتوى هذا المستند فقط.")
 
 # --- API key (Google Gemini - free tier, no credit card needed) ---
 api_key = st.secrets.get("GOOGLE_API_KEY", None)
@@ -18,30 +24,30 @@ if not api_key:
 client = genai.Client(api_key=api_key)
 MODEL_NAME = "gemini-3.6-flash"
 
-# --- PDF upload & text extraction (cached so re-runs don't re-parse) ---
-uploaded_file = st.sidebar.file_uploader("Upload a PDF", type=["pdf"])
-
-@st.cache_data(show_spinner="Reading PDF...")
-def extract_text(file_bytes):
-    reader = PdfReader(file_bytes)
+# --- Load the fixed knowledge-base PDF (bundled in the repo, not uploaded by users) ---
+@st.cache_data(show_spinner="جاري تحميل المستند...")
+def extract_text(path):
+    reader = PdfReader(path)
     text = ""
     for i, page in enumerate(reader.pages):
         text += f"\n\n--- Page {i+1} ---\n{page.extract_text() or ''}"
     return text
 
-if uploaded_file:
-    pdf_text = extract_text(uploaded_file)
-    st.sidebar.success(f"Loaded {len(pdf_text.split())} words")
-
-    # Simple guardrail: warn if the doc is very large for a single context window
-    if len(pdf_text) > 400_000:  # ~100k tokens rough estimate
-        st.sidebar.warning(
-            "This PDF is large — answers may be slower or hit context limits. "
-            "For big documents, a chunking/vector-search step (v2) works better."
-        )
-else:
-    st.info("Upload a PDF in the sidebar to begin chatting.")
+if not os.path.exists(KNOWLEDGE_BASE_FILE):
+    st.error(
+        f"لم يتم العثور على ملف '{KNOWLEDGE_BASE_FILE}'. "
+        "تأكد من رفعه إلى مستودع GitHub بجانب app.py."
+    )
     st.stop()
+
+pdf_text = extract_text(KNOWLEDGE_BASE_FILE)
+st.sidebar.success(f"تم تحميل المستند ({len(pdf_text.split())} كلمة)")
+
+if len(pdf_text) > 400_000:
+    st.sidebar.warning(
+        "هذا المستند كبير — قد تكون الإجابات أبطأ. "
+        "للمستندات الكبيرة جدًا، يُفضّل استخدام تقنية البحث المتجهي (v2)."
+    )
 
 # --- Chat state ---
 if "messages" not in st.session_state:
@@ -51,20 +57,26 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-if prompt := st.chat_input("Ask something about the PDF..."):
+if prompt := st.chat_input("اكتب سؤالك هنا..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
     system_prompt = (
-        "You are a helpful assistant answering questions ONLY using the "
-        "content of the PDF document provided below. If the answer isn't "
-        "in the document, say so clearly instead of guessing.\n\n"
+        f"You are a specialized assistant that answers questions ONLY about "
+        f"the document below, which covers the topic of '{DOCUMENT_TITLE}'. "
+        "Rules:\n"
+        "1. Answer ONLY using information found in the document content below.\n"
+        "2. If a question is unrelated to the document's topic, politely say "
+        "you can only answer questions about this specific document/topic, "
+        "and do not attempt to answer from general knowledge.\n"
+        "3. If the answer isn't in the document, say so clearly instead of guessing.\n"
+        "4. Reply in the same language the user asked in (Arabic or English).\n\n"
         f"DOCUMENT CONTENT:\n{pdf_text}"
     )
 
     with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
+        with st.spinner("جاري التفكير..."):
             gemini_contents = [
                 types.Content(
                     role="model" if m["role"] == "assistant" else "user",
@@ -81,3 +93,4 @@ if prompt := st.chat_input("Ask something about the PDF..."):
             st.markdown(answer)
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
+
