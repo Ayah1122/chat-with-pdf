@@ -16,7 +16,7 @@ if not api_key:
     st.stop()
 
 client = genai.Client(api_key=api_key)
-MODEL_NAME = "gemini-2.5-flash"
+MODEL_NAME = "gemini-3.6-flash"
 
 # --- PDF upload & text extraction (cached so re-runs don't re-parse) ---
 uploaded_file = st.sidebar.file_uploader("Upload a PDF", type=["pdf"])
