@@ -1,6 +1,7 @@
 import streamlit as st
 from pypdf import PdfReader
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 st.set_page_config(page_title="Chat with PDF", page_icon="📄")
 st.title("📄 Chat with your PDF")
@@ -14,8 +15,8 @@ if not api_key:
     st.info("Enter your free Gemini API key in the sidebar to start. Get one at aistudio.google.com/apikey")
     st.stop()
 
-genai.configure(api_key=api_key)
-model = genai.GenerativeModel("gemini-1.5-flash")
+client = genai.Client(api_key=api_key)
+MODEL_NAME = "gemini-2.5-flash"
 
 # --- PDF upload & text extraction (cached so re-runs don't re-parse) ---
 uploaded_file = st.sidebar.file_uploader("Upload a PDF", type=["pdf"])
@@ -64,16 +65,18 @@ if prompt := st.chat_input("Ask something about the PDF..."):
 
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
-            # Gemini has no separate "system" role in chat history, so we prepend it
-            # to the conversation as the first turn.
-            gemini_history = [{"role": "user", "parts": [system_prompt]},
-                               {"role": "model", "parts": ["Understood, I'll answer based on the document."]}]
-            for m in st.session_state.messages[:-1]:
-                role = "model" if m["role"] == "assistant" else "user"
-                gemini_history.append({"role": role, "parts": [m["content"]]})
-
-            chat = model.start_chat(history=gemini_history)
-            response = chat.send_message(prompt)
+            gemini_contents = [
+                types.Content(
+                    role="model" if m["role"] == "assistant" else "user",
+                    parts=[types.Part(text=m["content"])],
+                )
+                for m in st.session_state.messages
+            ]
+            response = client.models.generate_content(
+                model=MODEL_NAME,
+                contents=gemini_contents,
+                config=types.GenerateContentConfig(system_instruction=system_prompt),
+            )
             answer = response.text
             st.markdown(answer)
 
